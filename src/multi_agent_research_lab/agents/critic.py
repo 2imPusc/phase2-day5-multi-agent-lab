@@ -24,7 +24,14 @@ class CriticAgent(BaseAgent):
     def run(self, state: ResearchState) -> ResearchState:
         """Validate final answer: fact-check, citation coverage, hallucination detection."""
 
-        with trace_span("critic_run"):
+        with trace_span(
+            "critic_run",
+            {
+                "query": state.request.query,
+                "num_sources": len(state.sources),
+                "final_answer_chars": len(state.final_answer or ""),
+            },
+        ) as span:
             source_titles = [s.title for s in state.sources]
 
             response = self._llm.complete(
@@ -53,6 +60,9 @@ class CriticAgent(BaseAgent):
                     },
                 )
             )
+            span["attributes"]["input_tokens"] = response.input_tokens
+            span["attributes"]["output_tokens"] = response.output_tokens
+            span["attributes"]["review_preview"] = response.content[:300]
 
         state.add_trace_event("critic_done", {})
         logger.info("Critic completed review")

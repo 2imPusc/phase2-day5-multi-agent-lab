@@ -7,7 +7,9 @@ Supports OpenAI and Google Gemini (via OpenAI-compatible endpoint).
 from __future__ import annotations
 
 import logging
+import os
 from dataclasses import dataclass
+from typing import Any
 
 from openai import OpenAI
 from tenacity import retry, stop_after_attempt, wait_exponential
@@ -15,6 +17,26 @@ from tenacity import retry, stop_after_attempt, wait_exponential
 from multi_agent_research_lab.core.config import get_settings
 
 logger = logging.getLogger(__name__)
+
+
+def _maybe_wrap_for_langsmith(client: OpenAI) -> Any:
+    """Wrap an OpenAI client with LangSmith tracing when LANGSMITH_API_KEY is set.
+
+    `wrap_openai` makes each chat-completion call show up in LangSmith Studio as a
+    nested LLM run with the full prompt, response, and token usage — so traces
+    contain real content instead of just the meta-attributes our `trace_span`
+    context manager records.
+    """
+
+    if not os.getenv("LANGSMITH_API_KEY"):
+        return client
+    try:
+        from langsmith.wrappers import wrap_openai
+
+        return wrap_openai(client)
+    except Exception as exc:
+        logger.warning("wrap_openai failed, continuing without LLM tracing: %s", exc)
+        return client
 
 
 @dataclass(frozen=True)
@@ -32,14 +54,16 @@ class LLMClient:
         settings = get_settings()
 
         if settings.openai_api_key:
-            self._client = OpenAI(api_key=settings.openai_api_key)
+            raw_client = OpenAI(api_key=settings.openai_api_key)
+            self._client = _maybe_wrap_for_langsmith(raw_client)
             self._model = settings.openai_model
             logger.info("LLMClient using OpenAI model=%s", self._model)
         elif settings.google_api_key:
-            self._client = OpenAI(
+            raw_client = OpenAI(
                 api_key=settings.google_api_key,
                 base_url="https://generativelanguage.googleapis.com/v1beta/openai/",
             )
+            self._client = _maybe_wrap_for_langsmith(raw_client)
             self._model = settings.google_model
             logger.info("LLMClient using Google Gemini model=%s", self._model)
         else:

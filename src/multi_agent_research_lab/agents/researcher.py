@@ -26,7 +26,10 @@ class ResearcherAgent(BaseAgent):
     def run(self, state: ResearchState) -> ResearchState:
         """Search for sources and synthesize research notes."""
 
-        with trace_span("researcher_run") as span:
+        with trace_span(
+            "researcher_run",
+            {"query": state.request.query, "max_sources": state.request.max_sources},
+        ) as span:
             # Search for sources
             sources = self._search.search(state.request.query, state.request.max_sources)
             state.sources.extend(sources)
@@ -58,6 +61,9 @@ class ResearcherAgent(BaseAgent):
                 )
             )
             span["attributes"]["sources_found"] = len(sources)
+            span["attributes"]["input_tokens"] = response.input_tokens
+            span["attributes"]["output_tokens"] = response.output_tokens
+            span["attributes"]["research_notes_preview"] = response.content[:300]
 
         state.add_trace_event("researcher_done", {"sources": len(sources)})
         logger.info("Researcher found %d sources", len(sources))

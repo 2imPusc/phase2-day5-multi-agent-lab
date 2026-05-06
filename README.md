@@ -5,7 +5,7 @@
 > (Supervisor → Researcher → Analyst → Writer → Critic), với tracing LangSmith,
 > benchmark tự động và Gradio UI để demo trực tiếp.
 
-[![tests](https://img.shields.io/badge/tests-6%2F6%20passing-brightgreen)](#test)
+[![tests](https://img.shields.io/badge/tests-6%2F6%20passing-brightgreen)](#6-test)
 [![python](https://img.shields.io/badge/python-3.11%2B-blue)](https://www.python.org)
 [![lint](https://img.shields.io/badge/lint-ruff-orange)](https://docs.astral.sh/ruff/)
 
@@ -26,12 +26,12 @@ truth, dễ debug, dễ benchmark.
 
 ### So sánh với single-agent baseline (số thật từ run 2026-05-06)
 
-| Metric | Baseline | Multi-agent | Hệ số |
-|---|---:|---:|---:|
-| Latency trung bình | 11.66s | 41.24s | **3.54×** |
-| Cost trung bình | $0.00043 | $0.00183 | **4.26×** |
-| Token sử dụng | 787 | 5746 | **7.30×** |
-| **Citation coverage** | **0%** | **100%** | **+100 pp** |
+| Metric                | Baseline   | Multi-agent | Hệ số       |
+| --------------------- | ---------: | ----------: | ----------: |
+| Latency trung bình    | 11.66s     | 41.24s      | **3.54×**   |
+| Cost trung bình       | $0.00043   | $0.00183    | **4.26×**   |
+| Token sử dụng         | 787        | 5746        | **7.30×**   |
+| **Citation coverage** | **0%**     | **100%**    | **+100 pp** |
 
 → Trade-off chi tiết xem `reports/benchmark_report.md`.
 
@@ -39,7 +39,7 @@ truth, dễ debug, dễ benchmark.
 
 ## 2. Kiến trúc
 
-```
+```text
             ┌──────────────┐
             │    START      │
             └──────┬────────┘
@@ -152,7 +152,7 @@ make ui
 python -m multi_agent_research_lab.ui.gradio_app
 ```
 
-Mở http://127.0.0.1:7860 — chat box hỗ trợ:
+Mở <http://127.0.0.1:7860> — chat box hỗ trợ:
 
 - Toggle baseline ↔ multi-agent
 - Hiện route_history live
@@ -214,15 +214,15 @@ Test coverage:
 
 ## 7. Deliverables (lab submission)
 
-| # | Deliverable | Vị trí | Trạng thái |
-|---|---|---|---|
-| 1 | GitHub repo cá nhân | URL repo | ✅ |
-| 2 | Benchmark report so sánh single vs multi-agent | `reports/benchmark_report.md` | ✅ (số thật trên 3 query) |
-| 3 | Failure-mode write-up | section 3 trong `benchmark_report.md` | ✅ (4 mode) |
-| 4 | Screenshot/link trace | `reports/screenshots/gradio_demo.png` + section 4-5 trong report | ⏳ paste URL từ smith.langchain.com + screenshot trace |
-| 5 | Design document | `docs/design_template.md` | ✅ |
-| 6 | Peer review (Milestone 5) | live trong lab | ⏳ |
-| 7 | Exit ticket (Milestone 6) | live trong lab | ⏳ |
+| #   | Deliverable                                    | Vị trí                                                            | Trạng thái                            |
+| --- | ---------------------------------------------- | ----------------------------------------------------------------- | ------------------------------------- |
+| 1   | GitHub repo cá nhân                            | URL repo                                                          | ✅                                    |
+| 2   | Benchmark report so sánh single vs multi-agent | `reports/benchmark_report.md`                                     | ✅ (số thật trên 3 query)             |
+| 3   | Failure-mode write-up                          | section 3 trong `benchmark_report.md`                             | ✅ (5 mode)                           |
+| 4   | Screenshot/link trace                          | `reports/screenshots/{gradio_demo,langsmith}.png` + sections 4, 5 | ✅ screenshot; ⏳ paste 6 trace URL   |
+| 5   | Design document                                | `docs/design_template.md`                                         | ✅                                    |
+| 6   | Peer review (Milestone 5)                      | live trong lab                                                    | ⏳                                    |
+| 7   | Exit ticket (Milestone 6)                      | live trong lab + section 7 báo cáo                                | ✅ draft trong report; ⏳ live answer |
 
 ---
 

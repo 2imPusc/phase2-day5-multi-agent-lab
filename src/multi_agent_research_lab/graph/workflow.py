@@ -14,6 +14,7 @@ from multi_agent_research_lab.agents.supervisor import SupervisorAgent
 from multi_agent_research_lab.agents.writer import WriterAgent
 from multi_agent_research_lab.core.config import get_settings
 from multi_agent_research_lab.core.state import ResearchState
+from multi_agent_research_lab.observability.tracing import trace_span
 
 logger = logging.getLogger(__name__)
 
@@ -101,9 +102,28 @@ class MultiAgentWorkflow:
         return graph.compile()
 
     def run(self, state: ResearchState) -> ResearchState:
-        """Compile graph, invoke it, and convert result back to ResearchState."""
+        """Compile graph, invoke it, and convert result back to ResearchState.
+
+        Wraps the entire run in a single LangSmith parent span so each chat
+        produces one root trace whose children are the per-agent runs.
+        """
 
         compiled = self.build()
         logger.info("Starting multi-agent workflow for query: %s", state.request.query)
-        result = compiled.invoke(state.model_dump())
-        return ResearchState.model_validate(result)
+        with trace_span(
+            "multi_agent_workflow",
+            {
+                "query": state.request.query,
+                "audience": state.request.audience,
+                "max_sources": state.request.max_sources,
+            },
+        ) as span:
+            result = compiled.invoke(state.model_dump())
+            final_state = ResearchState.model_validate(result)
+            span["attributes"]["iterations"] = final_state.iteration
+            span["attributes"]["route_history"] = final_state.route_history
+            span["attributes"]["sources_found"] = len(final_state.sources)
+            span["attributes"]["final_answer_chars"] = len(final_state.final_answer or "")
+            span["attributes"]["final_answer_preview"] = (final_state.final_answer or "")[:500]
+            span["attributes"]["errors"] = final_state.errors
+        return final_state

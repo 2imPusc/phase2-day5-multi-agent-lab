@@ -24,7 +24,14 @@ class WriterAgent(BaseAgent):
     def run(self, state: ResearchState) -> ResearchState:
         """Synthesize a clear response with citations or source references."""
 
-        with trace_span("writer_run"):
+        with trace_span(
+            "writer_run",
+            {
+                "query": state.request.query,
+                "num_sources": len(state.sources),
+                "audience": state.request.audience,
+            },
+        ) as span:
             # Build source reference list
             source_refs = "\n".join(
                 f"[{i + 1}] {s.title} — {s.url or 'no url'}"
@@ -57,6 +64,10 @@ class WriterAgent(BaseAgent):
                     },
                 )
             )
+            span["attributes"]["input_tokens"] = response.input_tokens
+            span["attributes"]["output_tokens"] = response.output_tokens
+            span["attributes"]["final_answer_chars"] = len(response.content)
+            span["attributes"]["final_answer_preview"] = response.content[:400]
 
         state.add_trace_event("writer_done", {})
         logger.info("Writer completed final answer")

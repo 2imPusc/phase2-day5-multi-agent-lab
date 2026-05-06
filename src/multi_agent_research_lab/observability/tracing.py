@@ -3,6 +3,11 @@
 Supports LangSmith when LANGSMITH_API_KEY is set; otherwise falls back to
 in-memory spans. This avoids hard-binding to one provider while still letting
 students see real traces in LangSmith Studio.
+
+Each `trace_span` becomes a parent run on LangSmith. While the span is open,
+LangSmith's tracing context is set so that any `wrap_openai`-instrumented LLM
+call inside the block is automatically attached as a nested child run with the
+full prompt, response, and token usage.
 """
 
 from __future__ import annotations
@@ -11,11 +16,9 @@ import atexit
 import logging
 import os
 from collections.abc import Iterator
-from contextlib import contextmanager
-from datetime import datetime, timezone
+from contextlib import contextmanager, nullcontext
 from time import perf_counter
 from typing import Any
-from uuid import uuid4
 
 logger = logging.getLogger(__name__)
 
@@ -39,7 +42,6 @@ def _get_langsmith_client() -> Any | None:
         from langsmith import Client
 
         _client = Client()
-        # Make sure pending runs flush before the process exits.
         atexit.register(_flush_client)
     except Exception as exc:
         logger.warning("LangSmith client unavailable: %s", exc)
@@ -62,48 +64,58 @@ def _flush_client() -> None:
 def trace_span(name: str, attributes: dict[str, Any] | None = None) -> Iterator[dict[str, Any]]:
     """Span context that emits to LangSmith when configured.
 
-    Always yields an in-memory span dict so callers can attach attributes; the
-    LangSmith run is created/closed in parallel when an API key is present.
+    Yields an in-memory span dict so callers can record additional outputs.
+    Any `attributes` mutated inside the block are sent as the run's outputs
+    when the span closes. LLM calls made via a `wrap_openai`-instrumented
+    client will appear as nested child runs.
     """
 
     started = perf_counter()
-    start_time = datetime.now(timezone.utc)
-    span: dict[str, Any] = {"name": name, "attributes": attributes or {}, "duration_seconds": None}
+    initial_attrs = dict(attributes or {})
+    span: dict[str, Any] = {
+        "name": name,
+        "attributes": dict(initial_attrs),
+        "duration_seconds": None,
+    }
 
     client = _get_langsmith_client()
-    run_id = None
     project = os.getenv("LANGSMITH_PROJECT", "multi-agent-research-lab")
+    run_tree = None
+    parent_ctx: Any = nullcontext()
+
     if client is not None:
         try:
-            run_id = uuid4()
-            client.create_run(
+            from langsmith.run_helpers import tracing_context
+            from langsmith.run_trees import RunTree
+
+            run_tree = RunTree(
                 name=name,
                 run_type="chain",
-                inputs=dict(span["attributes"]),
+                inputs=initial_attrs,
                 project_name=project,
-                id=run_id,
-                start_time=start_time,
+                client=client,
             )
+            run_tree.post()
+            parent_ctx = tracing_context(parent=run_tree, client=client, project_name=project)
         except Exception as exc:
-            logger.warning("LangSmith create_run failed: %s", exc)
-            run_id = None
+            logger.warning("LangSmith RunTree init failed: %s", exc)
+            run_tree = None
+            parent_ctx = nullcontext()
 
     error: BaseException | None = None
     try:
-        yield span
-    except BaseException as exc:
-        error = exc
-        raise
+        with parent_ctx:
+            try:
+                yield span
+            except BaseException as exc:
+                error = exc
+                raise
     finally:
         span["duration_seconds"] = perf_counter() - started
-        end_time = datetime.now(timezone.utc)
-        if client is not None and run_id is not None:
+        if run_tree is not None:
             try:
-                client.update_run(
-                    run_id=run_id,
-                    outputs=None if error else {"attributes": dict(span["attributes"])},
-                    end_time=end_time,
-                    error=repr(error) if error else None,
-                )
+                outputs = None if error else dict(span["attributes"])
+                run_tree.end(outputs=outputs, error=repr(error) if error else None)
+                run_tree.patch()
             except Exception as exc:
-                logger.warning("LangSmith update_run failed: %s", exc)
+                logger.warning("LangSmith RunTree patch failed: %s", exc)

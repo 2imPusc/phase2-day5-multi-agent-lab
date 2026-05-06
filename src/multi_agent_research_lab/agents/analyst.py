@@ -24,7 +24,13 @@ class AnalystAgent(BaseAgent):
     def run(self, state: ResearchState) -> ResearchState:
         """Extract key claims, compare viewpoints, and flag weak evidence."""
 
-        with trace_span("analyst_run"):
+        with trace_span(
+            "analyst_run",
+            {
+                "query": state.request.query,
+                "research_notes_chars": len(state.research_notes or ""),
+            },
+        ) as span:
             response = self._llm.complete(
                 system_prompt=(
                     "You are a research analyst. Given the research notes below:\n"
@@ -48,6 +54,9 @@ class AnalystAgent(BaseAgent):
                     },
                 )
             )
+            span["attributes"]["input_tokens"] = response.input_tokens
+            span["attributes"]["output_tokens"] = response.output_tokens
+            span["attributes"]["analysis_preview"] = response.content[:300]
 
         state.add_trace_event("analyst_done", {})
         logger.info("Analyst completed analysis")

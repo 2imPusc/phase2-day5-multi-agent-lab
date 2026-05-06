@@ -27,6 +27,7 @@ from multi_agent_research_lab.evaluation.benchmark import run_benchmark
 from multi_agent_research_lab.evaluation.report import render_markdown_report
 from multi_agent_research_lab.graph.workflow import MultiAgentWorkflow
 from multi_agent_research_lab.observability.logging import configure_logging
+from multi_agent_research_lab.observability.tracing import trace_span
 from multi_agent_research_lab.services.llm_client import LLMClient
 from multi_agent_research_lab.services.storage import LocalArtifactStore
 from multi_agent_research_lab.utils.timer import elapsed_timer
@@ -41,28 +42,38 @@ def _init() -> None:
 
 
 def _baseline_runner(query: str) -> ResearchState:
-    """Single-agent baseline: one LLM call answers the query."""
+    """Single-agent baseline: one LLM call answers the query.
+
+    Wrapped in a single LangSmith span so each baseline chat appears as one
+    root run in LangSmith Studio (the underlying LLM call is nested via
+    `wrap_openai`).
+    """
     request = ResearchQuery(query=query)
     state = ResearchState(request=request)
-    llm = LLMClient()
-    response = llm.complete(
-        system_prompt=(
-            "You are a helpful research assistant. Answer the following query "
-            "thoroughly and cite your reasoning. Target audience: " + request.audience
-        ),
-        user_prompt=query,
-    )
-    state.final_answer = response.content
-    state.agent_results.append(
-        AgentResult(
-            agent=AgentName.WRITER,
-            content=response.content,
-            metadata={
-                "input_tokens": response.input_tokens,
-                "output_tokens": response.output_tokens,
-            },
+    with trace_span("baseline_workflow", {"query": query, "audience": request.audience}) as span:
+        llm = LLMClient()
+        response = llm.complete(
+            system_prompt=(
+                "You are a helpful research assistant. Answer the following query "
+                "thoroughly and cite your reasoning. Target audience: " + request.audience
+            ),
+            user_prompt=query,
         )
-    )
+        state.final_answer = response.content
+        state.agent_results.append(
+            AgentResult(
+                agent=AgentName.WRITER,
+                content=response.content,
+                metadata={
+                    "input_tokens": response.input_tokens,
+                    "output_tokens": response.output_tokens,
+                },
+            )
+        )
+        span["attributes"]["input_tokens"] = response.input_tokens
+        span["attributes"]["output_tokens"] = response.output_tokens
+        span["attributes"]["final_answer_chars"] = len(response.content)
+        span["attributes"]["final_answer_preview"] = response.content[:500]
     return state
 
 

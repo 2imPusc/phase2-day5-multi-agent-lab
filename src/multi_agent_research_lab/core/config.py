@@ -8,6 +8,17 @@ from functools import lru_cache
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+# Load `.env` into os.environ at import time so libraries that read env vars
+# directly (e.g. langsmith.Client, langsmith.wrappers.wrap_openai) see the
+# values too. pydantic-settings only populates the Settings instance, not
+# os.environ — that is not enough for SDKs that bypass our config object.
+try:
+    from dotenv import load_dotenv
+
+    load_dotenv(override=False)
+except ImportError:
+    pass
+
 
 class Settings(BaseSettings):
     """Runtime settings loaded from environment variables or `.env`."""
