@@ -1,0 +1,18 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python -c ' *)",
+      "Bash(export PYTHONIOENCODING=utf-8)",
+      "Bash(python etl_pipeline.py run --run-id s3-inject-hr --skip-validate)",
+      "Bash(python eval_retrieval.py --scenario inject-hr-old --run-id s3-inject-hr --out artifacts/eval/eval_s3-inject-hr.csv)",
+      "Bash(curl -s -i http://localhost:8080/health)",
+      "Bash(python -m pytest -q)",
+      "Bash(python -m pytest tests/test_report.py -v)",
+      "Bash(python -m multi_agent_research_lab.cli --help)",
+      "Bash(.venv\\\\Scripts\\\\python.exe -m multi_agent_research_lab.cli --help)",
+      "Bash(./.venv/Scripts/python.exe -m multi_agent_research_lab.cli --help)",
+      "Bash(./.venv/Scripts/python.exe -m pytest -q)",
+      "Bash(./.venv/Scripts/python.exe *)"
+    ]
+  }
+}

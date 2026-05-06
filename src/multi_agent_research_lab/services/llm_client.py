@@ -1,11 +1,20 @@
 """LLM client abstraction.
 
 Production note: agents should depend on this interface instead of importing an SDK directly.
+Supports OpenAI and Google Gemini (via OpenAI-compatible endpoint).
 """
 
+from __future__ import annotations
+
+import logging
 from dataclasses import dataclass
 
-from multi_agent_research_lab.core.errors import StudentTodoError
+from openai import OpenAI
+from tenacity import retry, stop_after_attempt, wait_exponential
+
+from multi_agent_research_lab.core.config import get_settings
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -17,13 +26,52 @@ class LLMResponse:
 
 
 class LLMClient:
-    """Provider-agnostic LLM client skeleton."""
+    """Provider-agnostic LLM client. Auto-selects Google Gemini or OpenAI based on available keys."""
 
+    def __init__(self) -> None:
+        settings = get_settings()
+
+        if settings.openai_api_key:
+            self._client = OpenAI(api_key=settings.openai_api_key)
+            self._model = settings.openai_model
+            logger.info("LLMClient using OpenAI model=%s", self._model)
+        elif settings.google_api_key:
+            self._client = OpenAI(
+                api_key=settings.google_api_key,
+                base_url="https://generativelanguage.googleapis.com/v1beta/openai/",
+            )
+            self._model = settings.google_model
+            logger.info("LLMClient using Google Gemini model=%s", self._model)
+        else:
+            raise RuntimeError(
+                "No LLM API key found. Set OPENAI_API_KEY or GOOGLE_API_KEY in .env"
+            )
+
+    @retry(stop=stop_after_attempt(5), wait=wait_exponential(min=2, max=30))
     def complete(self, system_prompt: str, user_prompt: str) -> LLMResponse:
-        """Return a model completion.
+        """Return a model completion with retry and token logging."""
 
-        TODO(student): Connect OpenAI, Azure OpenAI, or another provider.
-        Keep retry, timeout, and token logging here rather than inside agents.
-        """
+        response = self._client.chat.completions.create(
+            model=self._model,
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt},
+            ],
+        )
+        choice = response.choices[0]
+        usage = response.usage
 
-        raise StudentTodoError("TODO(student): implement LLMClient.complete")
+        input_tokens = usage.prompt_tokens if usage else None
+        output_tokens = usage.completion_tokens if usage else None
+        logger.info(
+            "LLM call model=%s input_tokens=%s output_tokens=%s",
+            self._model,
+            input_tokens,
+            output_tokens,
+        )
+
+        return LLMResponse(
+            content=choice.message.content or "",
+            input_tokens=input_tokens,
+            output_tokens=output_tokens,
+        )
